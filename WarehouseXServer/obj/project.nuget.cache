@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "gi0vtCqFEm8=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\seanm\\Desktop\\Microsoft Full-Stack Developer\\ms-course_order-management-system\\WarehouseXServer\\WarehouseXServer.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\seanm\\.nuget\\packages\\microsoft.aspnetcore.openapi\\9.0.9\\microsoft.aspnetcore.openapi.9.0.9.nupkg.sha512",
+    "C:\\Users\\seanm\\.nuget\\packages\\microsoft.openapi\\1.6.17\\microsoft.openapi.1.6.17.nupkg.sha512"
+  ],
+  "logs": []
+}
