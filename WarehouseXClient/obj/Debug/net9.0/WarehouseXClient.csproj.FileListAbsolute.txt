@@ -1073,10 +1073,10 @@ C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management
 C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\refint\WarehouseXClient.dll
 C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\WarehouseXClient.pdb
 C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\ref\WarehouseXClient.dll
-C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.w46zzz50vl.wasm
-C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.i8s558fup0.pdb
-C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.w46zzz50vl.wasm.gz
-C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.i8s558fup0.pdb.gz
-C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\compressed\v6cfe3eurt-w46zzz50vl.gz
-C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\compressed\jkf3ndttlc-i8s558fup0.gz
-C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\compressed\gdhfxthse3-d3cdus72z8.gz
+C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.fw0k9pxwpd.wasm
+C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.boz14cpnka.pdb
+C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.fw0k9pxwpd.wasm.gz
+C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\bin\Debug\net9.0\wwwroot\_framework\WarehouseXClient.boz14cpnka.pdb.gz
+C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\compressed\v6cfe3eurt-fw0k9pxwpd.gz
+C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\compressed\jkf3ndttlc-boz14cpnka.gz
+C:\Users\seanm\Desktop\Microsoft Full-Stack Developer\ms-course_order-management-system\WarehouseXClient\obj\Debug\net9.0\compressed\gdhfxthse3-2xa0pl57mp.gz

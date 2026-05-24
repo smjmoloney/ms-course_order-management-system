@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("WarehouseXServer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9841171a64de9de0f5700e5ea368cbf06ffbc5a6")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b05e9f6ce35e9f04d294cdc01b45ca4f8b56f32c")]
 [assembly: System.Reflection.AssemblyProductAttribute("WarehouseXServer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("WarehouseXServer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

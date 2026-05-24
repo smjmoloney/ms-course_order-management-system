@@ -59,6 +59,36 @@ public class PerformanceController : ControllerBase
         return Ok(rows);
     }
 
+    // Optimized application code — dictionary preload pattern.
+    // 1. Retrieves all relevant products in a single query (no redundant DB calls).
+    // 2. Stores products in a dictionary for O(1) lookups.
+    // 3. Loops through orders efficiently using preloaded product data.
+    [HttpGet("orders/preloaded")]
+    public async Task<IActionResult> GetOrdersPreloaded()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+
+        // Step 1: single query — fetch all products up front
+        var products = await conn.QueryAsync<ProductItem>(
+            "SELECT ProductID, ProductName FROM OptProducts");
+
+        // Step 2: store in a dictionary for fast lookups
+        var productDict = products.ToDictionary(p => p.ProductID);
+
+        // Step 3: fetch orders, then loop using preloaded product data
+        var orders = await conn.QueryAsync<OrderItem>(
+            "SELECT OrderID, ProductID, Quantity FROM OptOrders LIMIT 30");
+
+        var result = orders.Select(o => new OrderWithProduct
+        {
+            OrderID     = o.OrderID,
+            ProductName = productDict.TryGetValue(o.ProductID, out var p) ? p.ProductName : "Unknown",
+            Quantity    = o.Quantity
+        });
+
+        return Ok(result);
+    }
+
     // ---------------------------------------------------------------
     // Redundant Calls demo
     // ---------------------------------------------------------------
