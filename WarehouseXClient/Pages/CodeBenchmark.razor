@@ -1,0 +1,295 @@
+@page "/code-benchmark"
+@using System.Diagnostics
+@using System.Text.Json
+@inject HttpClient Http
+
+<PageTitle>Code Benchmark</PageTitle>
+
+<h1>Code Benchmark</h1>
+
+<p>
+    Three common client-side patterns that degrade performance, each paired with its
+    optimized alternative. All timings are measured from the first request sent until
+    the last response is fully received.
+</p>
+
+<div class="alert alert-secondary py-2 small mb-3">
+    <strong>N+1 Loop:</strong> The unoptimized path fetches 30 orders, then calls a
+    separate endpoint for each one to look up its product &mdash; 31 HTTP round-trips in
+    total. The optimized path replaces all of that with a single pre-joined endpoint.
+    <br><br>
+    <strong>Redundant Calls:</strong> The unoptimized path makes 3 separate requests for
+    dashboard stats the server could assemble in one trip. Each individual endpoint
+    adds a 20 ms delay representing realistic overhead (connection-pool wait, query
+    planning, or a slow downstream service). The optimized combined endpoint shares
+    one connection and skips that overhead entirely.
+    <br><br>
+    <strong>Sequential I/O:</strong> The server demonstrates both patterns internally:
+    the unoptimized endpoint <code>await</code>s three independent data-source calls
+    in series (total &asymp; 3 &times; 35 ms = 105 ms), while the optimized endpoint
+    fires all three simultaneously with <code>Task.WhenAll</code> (total &asymp; 35 ms).
+    The server measures its own elapsed time with a <code>Stopwatch</code> and returns
+    it directly, so the result is exact.
+</div>
+
+<details class="mb-2">
+    <summary class="text-muted" style="cursor:pointer">N+1 loop — unoptimized vs optimized</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>// Unoptimized — 1 list call + N individual product calls
+var orders = await Http.GetFromJsonAsync&lt;List&lt;OrderItem&gt;&gt;("api/performance/orders");
+foreach (var order in orders!)
+    await Http.GetFromJsonAsync&lt;JsonElement&gt;($"api/performance/product/{order.ProductID}");
+
+// Optimized — single call returns orders pre-joined with product names
+var orders = await Http.GetFromJsonAsync&lt;List&lt;OrderWithProduct&gt;&gt;("api/performance/orders/joined");</code></pre>
+</details>
+
+<details class="mb-2">
+    <summary class="text-muted" style="cursor:pointer">Redundant calls — unoptimized vs optimized</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>// Unoptimized — 3 round-trips, 3 DB connections
+await Http.GetFromJsonAsync&lt;JsonElement&gt;("api/performance/stats/order-count");
+await Http.GetFromJsonAsync&lt;JsonElement&gt;("api/performance/stats/total-quantity");
+await Http.GetFromJsonAsync&lt;JsonElement&gt;("api/performance/stats/top-product");
+
+// Optimized — 1 round-trip, 1 shared DB connection
+await Http.GetFromJsonAsync&lt;JsonElement&gt;("api/performance/stats/all");</code></pre>
+</details>
+
+<details class="mb-4">
+    <summary class="text-muted" style="cursor:pointer">Sequential I/O &mdash; unoptimized vs optimized (server-side)</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>// Unoptimized &mdash; each data source waits for the previous to finish
+var sw = Stopwatch.StartNew();
+await Task.Delay(35); // data source A
+await Task.Delay(35); // data source B
+await Task.Delay(35); // data source C
+sw.Stop(); // ~105 ms
+
+// Optimized &mdash; all three start simultaneously; total = slowest, not sum
+var sw = Stopwatch.StartNew();
+await Task.WhenAll(
+    Task.Delay(35), // data source A
+    Task.Delay(35), // data source B
+    Task.Delay(35)  // data source C
+);
+sw.Stop(); // ~35 ms</code></pre>
+</details>
+
+<div class="mb-4">
+    <button class="btn btn-primary" @onclick="RunAll" disabled="@IsRunning">
+        @(IsRunning ? "Running..." : "Run All")
+    </button>
+</div>
+
+<table class="table table-bordered w-auto">
+    <thead class="table-light">
+        <tr>
+            <th></th>
+            <th>Unoptimized</th>
+            <th>Optimized</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th class="align-middle">
+                N+1 Loop<br>
+                <small class="fw-normal text-muted">per-order HTTP call</small>
+            </th>
+            @CellTd("n1", "unopt")
+            @CellTd("n1", "opt")
+        </tr>
+        <tr>
+            <th class="align-middle">
+                Redundant Calls<br>
+                <small class="fw-normal text-muted">separate request per stat</small>
+            </th>
+            @CellTd("redundant", "unopt")
+            @CellTd("redundant", "opt")
+        </tr>
+        <tr>
+            <th class="align-middle">
+                Sequential I/O<br>
+                <small class="fw-normal text-muted">await each in series</small>
+            </th>
+            @CellTd("io", "unopt")
+            @CellTd("io", "opt")
+        </tr>
+    </tbody>
+</table>
+
+@code {
+    private record OrderItem(int OrderID, int ProductID, int Quantity);
+    private record OrderWithProduct(int OrderID, string ProductName, int Quantity);
+    private record PerfResult(long DurationMs, string Detail);
+
+    private Dictionary<string, PerfResult?> _results = new();
+    private Dictionary<string, bool>        _loading = new();
+    private Dictionary<string, string?>     _errors  = new();
+
+    private bool IsRunning => _loading.Values.Any(v => v);
+
+    private void SetLoading(string key)
+    {
+        _loading[key] = true;
+        _results.Remove(key);
+        _errors.Remove(key);
+        StateHasChanged();
+    }
+
+    // --- N+1 ---
+
+    private async Task RunN1Unopt()
+    {
+        const string key = "n1-unopt";
+        SetLoading(key);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var orders = await Http.GetFromJsonAsync<List<OrderItem>>("api/performance/orders");
+            foreach (var order in orders!)
+                await Http.GetFromJsonAsync<JsonElement>($"api/performance/product/{order.ProductID}");
+            sw.Stop();
+            _results[key] = new(sw.ElapsedMilliseconds, $"{orders.Count + 1} HTTP calls");
+        }
+        catch (Exception ex) { _errors[key] = ex.Message; }
+        finally { _loading[key] = false; StateHasChanged(); }
+    }
+
+    private async Task RunN1Opt()
+    {
+        const string key = "n1-opt";
+        SetLoading(key);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var orders = await Http.GetFromJsonAsync<List<OrderWithProduct>>("api/performance/orders/joined");
+            sw.Stop();
+            _results[key] = new(sw.ElapsedMilliseconds, "1 HTTP call");
+        }
+        catch (Exception ex) { _errors[key] = ex.Message; }
+        finally { _loading[key] = false; StateHasChanged(); }
+    }
+
+    // --- Redundant Calls ---
+
+    private async Task RunRedundantUnopt()
+    {
+        const string key = "redundant-unopt";
+        SetLoading(key);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            await Http.GetFromJsonAsync<JsonElement>("api/performance/stats/order-count");
+            await Http.GetFromJsonAsync<JsonElement>("api/performance/stats/total-quantity");
+            await Http.GetFromJsonAsync<JsonElement>("api/performance/stats/top-product");
+            sw.Stop();
+            _results[key] = new(sw.ElapsedMilliseconds, "3 HTTP calls, 3 DB queries");
+        }
+        catch (Exception ex) { _errors[key] = ex.Message; }
+        finally { _loading[key] = false; StateHasChanged(); }
+    }
+
+    private async Task RunRedundantOpt()
+    {
+        const string key = "redundant-opt";
+        SetLoading(key);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            await Http.GetFromJsonAsync<JsonElement>("api/performance/stats/all");
+            sw.Stop();
+            _results[key] = new(sw.ElapsedMilliseconds, "1 HTTP call, 1 DB connection");
+        }
+        catch (Exception ex) { _errors[key] = ex.Message; }
+        finally { _loading[key] = false; StateHasChanged(); }
+    }
+
+    // --- Sequential vs Parallel I/O ---
+
+    private record IOResult(long DurationMs, string Detail);
+
+    private async Task RunIOUnopt()
+    {
+        const string key = "io-unopt";
+        SetLoading(key);
+        try
+        {
+            var result = await Http.GetFromJsonAsync<IOResult>("api/performance/io/sequential");
+            _results[key] = new(result!.DurationMs, result.Detail);
+        }
+        catch (Exception ex) { _errors[key] = ex.Message; }
+        finally { _loading[key] = false; StateHasChanged(); }
+    }
+
+    private async Task RunIOOpt()
+    {
+        const string key = "io-opt";
+        SetLoading(key);
+        try
+        {
+            var result = await Http.GetFromJsonAsync<IOResult>("api/performance/io/parallel");
+            _results[key] = new(result!.DurationMs, result.Detail);
+        }
+        catch (Exception ex) { _errors[key] = ex.Message; }
+        finally { _loading[key] = false; StateHasChanged(); }
+    }
+
+    // --- Orchestration ---
+
+    private Task RunCell(string demo, string variant) => (demo, variant) switch
+    {
+        ("n1",       "unopt") => RunN1Unopt(),
+        ("n1",       "opt")   => RunN1Opt(),
+        ("redundant","unopt") => RunRedundantUnopt(),
+        ("redundant","opt")   => RunRedundantOpt(),
+        ("io",       "unopt") => RunIOUnopt(),
+        ("io",       "opt")   => RunIOOpt(),
+        _ => Task.CompletedTask
+    };
+
+    private async Task RunAll()
+    {
+        var keys = new[] { "n1-unopt", "n1-opt", "redundant-unopt", "redundant-opt", "io-unopt", "io-opt" };
+        foreach (var k in keys) { _loading[k] = true; _results.Remove(k); _errors.Remove(k); }
+        StateHasChanged();
+        await Task.WhenAll(
+            RunN1Unopt().ContinueWith(_ => { }),
+            RunN1Opt().ContinueWith(_ => { }),
+            RunRedundantUnopt().ContinueWith(_ => { }),
+            RunRedundantOpt().ContinueWith(_ => { }),
+            RunIOUnopt().ContinueWith(_ => { }),
+            RunIOOpt().ContinueWith(_ => { })
+        );
+    }
+
+    private RenderFragment CellTd(string demo, string variant) => __builder =>
+    {
+        var key     = $"{demo}-{variant}";
+        var loading = _loading.GetValueOrDefault(key);
+        var result  = _results.GetValueOrDefault(key);
+        var error   = _errors.GetValueOrDefault(key);
+
+        <td class="align-middle text-center" style="min-width:12rem">
+            @if (loading)
+            {
+                <span class="text-muted small fst-italic">Running...</span>
+            }
+            else if (error is not null)
+            {
+                <span class="text-danger small">@error</span>
+            }
+            else if (result is not null)
+            {
+                <span class="fw-bold fs-5">@result.DurationMs ms</span>
+                <br>
+                <small class="text-muted">@result.Detail</small>
+            }
+            else
+            {
+                <span class="text-muted small">—</span>
+            }
+            <br>
+            <button class="btn btn-outline-secondary btn-sm mt-1"
+                    @onclick="() => RunCell(demo, variant)"
+                    disabled="@IsRunning">Run</button>
+        </td>
+    };
+}

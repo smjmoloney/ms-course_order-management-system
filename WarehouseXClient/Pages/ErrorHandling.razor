@@ -1,0 +1,248 @@
+@page "/error-handling"
+@using System.Text.Json
+@inject HttpClient Http
+
+<PageTitle>Error Handling</PageTitle>
+
+<h1>Error Handling</h1>
+
+<p>
+    Three runtime error patterns that cause application crashes or silent data corruption,
+    paired with the defensive coding techniques that handle them gracefully. Each row
+    sends the same problematic input to both a fragile and a resilient endpoint.
+</p>
+
+<div class="alert alert-secondary py-2 small mb-3">
+    <strong>Null Reference:</strong> ProductID&nbsp;99999 does not exist in the database.
+    Without a null check the code dereferences a null object and throws
+    <code>NullReferenceException</code> &rarr; HTTP&nbsp;500. The resilient version
+    checks first and returns a descriptive HTTP&nbsp;404.
+    <br><br>
+    <strong>Unhandled Exception:</strong> An order for 9,999,999 units against a product
+    with 120 in stock. The fragile version subtracts first and discovers the impossible
+    result too late, throwing <code>InvalidOperationException</code> &rarr; HTTP&nbsp;500.
+    The resilient version checks stock <em>before</em> modifying anything and returns
+    HTTP&nbsp;400 with a clear explanation.
+    <br><br>
+    <strong>Edge Case (zero quantity):</strong> An order submitted with
+    <code>quantity&nbsp;=&nbsp;0</code>. Without input validation the fragile endpoint
+    accepts it silently &mdash; no stock changes but the caller receives HTTP&nbsp;200,
+    masking the bug entirely. The resilient version rejects it at the boundary with
+    HTTP&nbsp;400.
+</div>
+
+<details class="mb-2">
+    <summary class="text-muted" style="cursor:pointer">Null reference — fragile vs resilient</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>// Fragile — no null check; NullReferenceException propagates to the global handler
+ProductItem? product = await conn.QueryFirstOrDefaultAsync&lt;ProductItem&gt;(..., new { id = 99999 });
+string name = product!.ProductName; // throws NullReferenceException if product is null
+
+// Resilient — explicit null check before use; returns descriptive 404
+ProductItem? product = await conn.QueryFirstOrDefaultAsync&lt;ProductItem&gt;(..., new { id = 99999 });
+if (product is null)
+    return NotFound(new { message = "Product 99999 not found." });
+string name = product.ProductName; // safe to access</code></pre>
+</details>
+
+<details class="mb-2">
+    <summary class="text-muted" style="cursor:pointer">Unhandled exception — fragile vs resilient</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>// Fragile — no try/catch; InvalidOperationException escapes to the global handler
+public IActionResult ProcessOrder(OrderRequest req)
+{
+    int newStock = product.Stock - req.Quantity; // subtract first...
+    if (newStock &lt; 0)
+        throw new InvalidOperationException("Stock would be negative."); // ...check after
+    product.Stock = newStock;
+    return Ok();
+}
+
+// Resilient — pre-validate + try/catch as a safety net
+public IActionResult ProcessOrder(OrderRequest req)
+{
+    try
+    {
+        if (req.Quantity &gt; product.Stock)
+            return BadRequest("Insufficient stock."); // fail fast, fail clearly
+        product.Stock -= req.Quantity;
+        return Ok();
+    }
+    catch (Exception ex)
+    {
+        return BadRequest(new { message = ex.Message });
+    }
+}</code></pre>
+</details>
+
+<details class="mb-4">
+    <summary class="text-muted" style="cursor:pointer">Edge case — fragile vs resilient</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>// Fragile — no input validation; silently accepts quantity = 0
+public IActionResult ProcessOrder(OrderRequest req)
+{
+    product.Stock -= req.Quantity; // subtracts 0 — silent no-op
+    return Ok(); // misleading: reports success for an invalid order
+}
+
+// Resilient — validate at the boundary before any processing
+public IActionResult ProcessOrder(OrderRequest req)
+{
+    if (req.Quantity &lt;= 0)
+        return BadRequest("Quantity must be at least 1.");
+    product.Stock -= req.Quantity;
+    return Ok();
+}</code></pre>
+</details>
+
+<div class="mb-4">
+    <button class="btn btn-primary" @onclick="RunAll" disabled="@IsRunning">
+        @(IsRunning ? "Running..." : "Run All")
+    </button>
+</div>
+
+<table class="table table-bordered w-auto">
+    <thead class="table-light">
+        <tr>
+            <th></th>
+            <th>Fragile</th>
+            <th>Resilient</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th class="align-middle">
+                Null Reference<br>
+                <small class="fw-normal text-muted">product ID 99999</small>
+            </th>
+            @CellTd("nullref", "fragile")
+            @CellTd("nullref", "resilient")
+        </tr>
+        <tr>
+            <th class="align-middle">
+                Unhandled Exception<br>
+                <small class="fw-normal text-muted">9,999,999 units requested</small>
+            </th>
+            @CellTd("exception", "fragile")
+            @CellTd("exception", "resilient")
+        </tr>
+        <tr>
+            <th class="align-middle">
+                Edge Case<br>
+                <small class="fw-normal text-muted">quantity = 0</small>
+            </th>
+            @CellTd("edge", "fragile")
+            @CellTd("edge", "resilient")
+        </tr>
+    </tbody>
+</table>
+
+@code {
+    private record ResilienceResult(int StatusCode, string Message);
+
+    private Dictionary<string, ResilienceResult?> _results = new();
+    private Dictionary<string, bool>              _loading = new();
+    private Dictionary<string, string?>           _errors  = new();
+
+    private bool IsRunning => _loading.Values.Any(v => v);
+
+    private void SetLoading(string key)
+    {
+        _loading[key] = true;
+        _results.Remove(key);
+        _errors.Remove(key);
+        StateHasChanged();
+    }
+
+    private async Task<ResilienceResult> Fetch(string url)
+    {
+        var response  = await Http.GetAsync(url);
+        var statusCode = (int)response.StatusCode;
+        try
+        {
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var message = json.TryGetProperty("message", out var m)  ? m.GetString()
+                        : json.TryGetProperty("Message", out var m2) ? m2.GetString()
+                        : json.ToString();
+            return new(statusCode, message ?? $"HTTP {statusCode}");
+        }
+        catch
+        {
+            return new(statusCode, $"HTTP {statusCode}");
+        }
+    }
+
+    private async Task RunCell(string pattern, string variant)
+    {
+        var key = $"{pattern}-{variant}";
+        SetLoading(key);
+        try
+        {
+            var url = pattern switch
+            {
+                "nullref"   => $"api/resilience/null-ref/{variant}",
+                "exception" => $"api/resilience/exception/{variant}",
+                "edge"      => $"api/resilience/edge/{variant}?quantity=0",
+                _           => throw new ArgumentException($"Unknown pattern: {pattern}")
+            };
+            _results[key] = await Fetch(url);
+        }
+        catch (Exception ex) { _errors[key] = ex.Message; }
+        finally { _loading[key] = false; StateHasChanged(); }
+    }
+
+    private async Task RunAll()
+    {
+        var keys = new[] {
+            "nullref-fragile",   "nullref-resilient",
+            "exception-fragile", "exception-resilient",
+            "edge-fragile",      "edge-resilient"
+        };
+        foreach (var k in keys) { _loading[k] = true; _results.Remove(k); _errors.Remove(k); }
+        StateHasChanged();
+        await Task.WhenAll(
+            RunCell("nullref",   "fragile"  ).ContinueWith(_ => { }),
+            RunCell("nullref",   "resilient").ContinueWith(_ => { }),
+            RunCell("exception", "fragile"  ).ContinueWith(_ => { }),
+            RunCell("exception", "resilient").ContinueWith(_ => { }),
+            RunCell("edge",      "fragile"  ).ContinueWith(_ => { }),
+            RunCell("edge",      "resilient").ContinueWith(_ => { })
+        );
+    }
+
+    private RenderFragment CellTd(string pattern, string variant) => __builder =>
+    {
+        var key     = $"{pattern}-{variant}";
+        var loading = _loading.GetValueOrDefault(key);
+        var result  = _results.GetValueOrDefault(key);
+        var error   = _errors.GetValueOrDefault(key);
+
+        // 5xx = crash (red); 2xx from fragile = silent bug (amber); 4xx = handled (green)
+        string badgeClass = result is null        ? "bg-secondary"
+            : result.StatusCode >= 500            ? "bg-danger"
+            : result.StatusCode < 300 && variant == "fragile" ? "bg-warning text-dark"
+            : "bg-success";
+
+        <td class="align-middle text-center" style="min-width:13rem">
+            @if (loading)
+            {
+                <span class="text-muted small fst-italic">Running...</span>
+            }
+            else if (error is not null)
+            {
+                <span class="text-danger small">@error</span>
+            }
+            else if (result is not null)
+            {
+                <span class="badge @badgeClass mb-1">HTTP @result.StatusCode</span>
+                <br>
+                <small class="text-muted">@result.Message</small>
+            }
+            else
+            {
+                <span class="text-muted small">—</span>
+            }
+            <br>
+            <button class="btn btn-outline-secondary btn-sm mt-1"
+                    @onclick="() => RunCell(pattern, variant)"
+                    disabled="@IsRunning">Run</button>
+        </td>
+    };
+}

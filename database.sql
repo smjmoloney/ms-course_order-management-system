@@ -1,50 +1,75 @@
--- WarehouseX Database Schema
+-- WarehouseX Database Schema (SQLite reference)
+-- The server initializes and seeds this database automatically on first run.
+-- This file is kept for reference only — you do not need to run it manually.
+--
+-- SQLite does not support schemas, so tables are prefixed instead:
+--   Unopt* — no extra indexes (slow path)
+--   Opt*   — with covering indexes (fast path)
+-- ============================================================
 
-CREATE TABLE Customers (
-    CustomerID   INT           PRIMARY KEY IDENTITY(1,1),
-    FirstName    NVARCHAR(50)  NOT NULL,
-    LastName     NVARCHAR(50)  NOT NULL,
-    Email        NVARCHAR(100) NOT NULL UNIQUE
+CREATE TABLE IF NOT EXISTS Customers (
+    CustomerID INTEGER PRIMARY KEY AUTOINCREMENT,
+    FirstName  TEXT NOT NULL,
+    LastName   TEXT NOT NULL,
+    Email      TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE Products (
-    ProductID    INT            PRIMARY KEY IDENTITY(1,1),
-    ProductName  NVARCHAR(100)  NOT NULL,
-    Category     NVARCHAR(50)   NOT NULL,
-    Price        DECIMAL(10, 2) NOT NULL,
-    Stock        INT            NOT NULL DEFAULT 0
+-- Unoptimized tables — no indexes beyond primary keys
+CREATE TABLE IF NOT EXISTS UnoptProducts (
+    ProductID   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProductName TEXT NOT NULL,
+    Category    TEXT NOT NULL,
+    Price       REAL NOT NULL,
+    Stock       INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE Orders (
-    OrderID     INT  PRIMARY KEY IDENTITY(1,1),
-    CustomerID  INT  NOT NULL REFERENCES Customers(CustomerID),
-    ProductID   INT  NOT NULL REFERENCES Products(ProductID),
-    Quantity    INT  NOT NULL,
-    OrderDate   DATE NOT NULL DEFAULT GETDATE()
+CREATE TABLE IF NOT EXISTS UnoptOrders (
+    OrderID    INTEGER PRIMARY KEY AUTOINCREMENT,
+    CustomerID INTEGER NOT NULL REFERENCES Customers(CustomerID),
+    ProductID  INTEGER NOT NULL REFERENCES UnoptProducts(ProductID),
+    Quantity   INTEGER NOT NULL,
+    OrderDate  TEXT NOT NULL DEFAULT (date('now'))
 );
 
--- ------------------------------------------------------------
--- Seed data
--- ------------------------------------------------------------
+-- Optimized tables — with covering indexes
+CREATE TABLE IF NOT EXISTS OptProducts (
+    ProductID   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProductName TEXT NOT NULL,
+    Category    TEXT NOT NULL,
+    Price       REAL NOT NULL,
+    Stock       INTEGER NOT NULL DEFAULT 0
+);
 
-INSERT INTO Customers (FirstName, LastName, Email) VALUES
-    ('Alice',  'Nguyen',   'alice.nguyen@example.com'),
-    ('Bob',    'Patel',    'bob.patel@example.com'),
-    ('Carol',  'Schmidt',  'carol.schmidt@example.com');
+CREATE TABLE IF NOT EXISTS OptOrders (
+    OrderID    INTEGER PRIMARY KEY AUTOINCREMENT,
+    CustomerID INTEGER NOT NULL REFERENCES Customers(CustomerID),
+    ProductID  INTEGER NOT NULL REFERENCES OptProducts(ProductID),
+    Quantity   INTEGER NOT NULL,
+    OrderDate  TEXT NOT NULL DEFAULT (date('now'))
+);
 
-INSERT INTO Products (ProductName, Category, Price, Stock) VALUES
-    ('Wireless Headphones', 'Electronics',  89.99, 120),
-    ('USB-C Hub',           'Electronics',  34.99, 200),
-    ('Laptop Stand',        'Accessories',  49.99,  85),
-    ('Mechanical Keyboard', 'Electronics', 109.99,  60),
-    ('Desk Lamp',           'Accessories',  24.99, 150);
+-- Index 1: seek directly to rows where Category = 'Electronics'
+CREATE INDEX IF NOT EXISTS IX_OptProducts_Category ON OptProducts (Category);
 
-INSERT INTO Orders (CustomerID, ProductID, Quantity, OrderDate) VALUES
-    (1, 1, 2, '2026-04-10'),
-    (2, 1, 1, '2026-04-15'),
-    (3, 2, 4, '2026-04-18'),
-    (1, 4, 1, '2026-04-20'),
-    (2, 3, 2, '2026-04-22'),
-    (3, 4, 3, '2026-05-01'),
-    (1, 2, 2, '2026-05-05'),
-    (2, 5, 1, '2026-05-10');
+-- Index 2: seek matching orders by ProductID; Quantity included to avoid a table lookup
+CREATE INDEX IF NOT EXISTS IX_OptOrders_ProductID ON OptOrders (ProductID, Quantity);
+
+-- ============================================================
+-- Reference queries (executed by the server endpoints)
+-- ============================================================
+
+-- UNOPTIMIZED: full table scan on UnoptProducts + UnoptOrders
+-- SELECT p.ProductName, SUM(o.Quantity) AS TotalSold
+-- FROM UnoptOrders o
+-- JOIN UnoptProducts p ON o.ProductID = p.ProductID
+-- WHERE p.Category = 'Electronics'
+-- GROUP BY p.ProductName
+-- ORDER BY TotalSold DESC;
+
+-- OPTIMIZED: index seek on Category, covering index on ProductID/Quantity
+-- SELECT p.ProductName, SUM(o.Quantity) AS TotalSold
+-- FROM OptOrders o
+-- JOIN OptProducts p ON o.ProductID = p.ProductID
+-- WHERE p.Category = 'Electronics'
+-- GROUP BY p.ProductName
+-- ORDER BY TotalSold DESC;

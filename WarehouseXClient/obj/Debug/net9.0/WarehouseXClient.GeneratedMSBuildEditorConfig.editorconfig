@@ -28,8 +28,20 @@ build_property.EnableCodeStyleSeverity =
 build_metadata.AdditionalFiles.TargetPath = QXBwLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/seanm/Desktop/Microsoft Full-Stack Developer/ms-course_order-management-system/WarehouseXClient/Pages/CodeBenchmark.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ29kZUJlbmNobWFyay5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/seanm/Desktop/Microsoft Full-Stack Developer/ms-course_order-management-system/WarehouseXClient/Pages/ErrorHandling.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRXJyb3JIYW5kbGluZy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/seanm/Desktop/Microsoft Full-Stack Developer/ms-course_order-management-system/WarehouseXClient/Pages/Home.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSG9tZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/seanm/Desktop/Microsoft Full-Stack Developer/ms-course_order-management-system/WarehouseXClient/Pages/QueryBenchmark.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUXVlcnlCZW5jaG1hcmsucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/seanm/Desktop/Microsoft Full-Stack Developer/ms-course_order-management-system/WarehouseXClient/_Imports.razor]

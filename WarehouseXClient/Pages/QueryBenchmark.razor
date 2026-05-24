@@ -1,0 +1,156 @@
+@page "/benchmark"
+@inject HttpClient Http
+
+<PageTitle>Query Benchmark</PageTitle>
+
+<h1>Query Benchmark</h1>
+
+<p>
+    Each cell runs one combination of <strong>query style</strong> and <strong>schema</strong>
+    against 200&thinsp;000 orders. Reading <strong>across</strong> a row shows the effect of
+    adding indexes to the same query. Reading <strong>down</strong> a column shows the effect
+    of rewriting the query against the same schema.
+</p>
+
+<div class="alert alert-secondary py-2 small mb-3">
+    <strong>How the queries differ:</strong> The unoptimized query wraps a correlated subquery
+    in a derived table with <code>LIMIT -1 OFFSET 0</code> &mdash; a documented SQLite trick
+    that disables query flattening, forcing the engine to compute totals for
+    <em>all 20 products</em> before the outer <code>WHERE Category = 'Electronics'</code>
+    filter can run. The optimized query applies the category filter first, so only
+    4 products ever touch the Orders table.
+    <br>
+    <strong>How the schemas differ:</strong> The unoptimized schema has no extra indexes.
+    The optimized schema adds a covering index on <code>Orders(ProductID, Quantity)</code>,
+    so the aggregation can be answered from the index alone &mdash; no row lookups needed.
+</div>
+
+<details class="mb-2">
+    <summary class="text-muted" style="cursor:pointer">Unoptimized query</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>SELECT ProductName, TotalSold
+FROM (
+    SELECT p.ProductName, p.Category,
+           COALESCE(
+               (SELECT SUM(o.Quantity)
+                FROM Orders o WHERE o.ProductID = p.ProductID),
+               0) AS TotalSold
+    FROM Products p
+    LIMIT -1 OFFSET 0   -- disables query flattening
+)
+WHERE Category = 'Electronics'
+ORDER BY TotalSold DESC</code></pre>
+</details>
+<details class="mb-4">
+    <summary class="text-muted" style="cursor:pointer">Optimized query</summary>
+    <pre class="mt-2 p-3 bg-light border rounded small"><code>SELECT p.ProductName, SUM(o.Quantity) AS TotalSold
+FROM Products p
+JOIN Orders o ON p.ProductID = o.ProductID
+WHERE p.Category = 'Electronics'
+GROUP BY p.ProductName
+ORDER BY TotalSold DESC</code></pre>
+</details>
+
+<div class="mb-4">
+    <button class="btn btn-primary" @onclick="RunAll" disabled="@IsRunning">
+        @(IsRunning ? "Running..." : "Run All")
+    </button>
+</div>
+
+<table class="table table-bordered w-auto">
+    <thead class="table-light">
+        <tr>
+            <th></th>
+            <th>No indexes</th>
+            <th>With indexes</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th class="align-middle">
+                Correlated subquery<br>
+                <small class="fw-normal text-muted">loops all 20 products</small>
+            </th>
+            @CellTd("unoptimized", "unopt")
+            @CellTd("unoptimized", "opt")
+        </tr>
+        <tr>
+            <th class="align-middle">
+                Filter-first JOIN<br>
+                <small class="fw-normal text-muted">4 Electronics only</small>
+            </th>
+            @CellTd("optimized", "unopt")
+            @CellTd("optimized", "opt")
+        </tr>
+    </tbody>
+</table>
+
+@code {
+    private Dictionary<string, BenchmarkResult?> _results = new();
+    private Dictionary<string, bool>             _loading = new();
+    private Dictionary<string, string?>          _errors  = new();
+
+    private bool IsRunning => _loading.Values.Any(v => v);
+
+    private async Task RunCell(string queryType, string schemaType)
+    {
+        var key = $"{queryType}-{schemaType}";
+        _loading[key] = true;
+        _results.Remove(key);
+        _errors.Remove(key);
+        StateHasChanged();
+        try
+        {
+            _results[key] = await Http.GetFromJsonAsync<BenchmarkResult>(
+                $"api/benchmark/run?queryType={queryType}&schemaType={schemaType}");
+        }
+        catch (Exception ex)
+        {
+            _errors[key] = ex.Message;
+        }
+        _loading[key] = false;
+        StateHasChanged();
+    }
+
+    private async Task RunAll()
+    {
+        string[] keys = ["unoptimized-unopt", "unoptimized-opt", "optimized-unopt", "optimized-opt"];
+        foreach (var k in keys) { _loading[k] = true; _results.Remove(k); _errors.Remove(k); }
+        StateHasChanged();
+        await Task.WhenAll(
+            RunCell("unoptimized", "unopt").ContinueWith(_ => { }),
+            RunCell("unoptimized", "opt"  ).ContinueWith(_ => { }),
+            RunCell("optimized",   "unopt").ContinueWith(_ => { }),
+            RunCell("optimized",   "opt"  ).ContinueWith(_ => { })
+        );
+    }
+
+    private RenderFragment CellTd(string queryType, string schemaType) => __builder =>
+    {
+        var key     = $"{queryType}-{schemaType}";
+        var loading = _loading.GetValueOrDefault(key);
+        var result  = _results.GetValueOrDefault(key);
+        var error   = _errors.GetValueOrDefault(key);
+
+        <td class="align-middle text-center" style="min-width:9rem">
+            @if (loading)
+            {
+                <span class="text-muted small fst-italic">Running...</span>
+            }
+            else if (error is not null)
+            {
+                <span class="text-danger small">@error</span>
+            }
+            else if (result is not null)
+            {
+                <span class="fw-bold fs-5">@result.DurationMs ms</span>
+            }
+            else
+            {
+                <span class="text-muted small">—</span>
+            }
+            <br>
+            <button class="btn btn-outline-secondary btn-sm mt-1" @onclick="() => RunCell(queryType, schemaType)" disabled="@IsRunning">Run</button>
+        </td>
+    };
+}
+
